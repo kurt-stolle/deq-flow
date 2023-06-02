@@ -16,6 +16,7 @@ from deq.layer_utils import DEQWrapper
 
 from metrics import process_metrics
 
+__all__ = ["DEQFlow"]
 
 try:
     autocast = torch.cuda.amp.autocast
