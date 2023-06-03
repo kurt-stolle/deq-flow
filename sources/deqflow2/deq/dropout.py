@@ -1,12 +1,10 @@
 import types
 
-from torch.nn.parameter import Parameter
-import torch.nn as nn
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-
-
+from torch.nn.parameter import Parameter
 
 ##############################################################################################################
 #
@@ -38,7 +36,7 @@ class WeightDrop(torch.nn.Module):
 
     def _setup(self):
         for path in self.weights:
-            full_name_w = '.'.join(path)
+            full_name_w = ".".join(path)
 
             module = self.module
             name_w = path[-1]
@@ -46,7 +44,7 @@ class WeightDrop(torch.nn.Module):
                 module = getattr(module, path[i])
             w = getattr(module, name_w)
             del module._parameters[name_w]
-            module.register_parameter(name_w + '_raw', Parameter(w.data))
+            module.register_parameter(name_w + "_raw", Parameter(w.data))
 
     def _setweights(self):
         for path in self.weights:
@@ -54,12 +52,13 @@ class WeightDrop(torch.nn.Module):
             name_w = path[-1]
             for i in range(len(path) - 1):
                 module = getattr(module, path[i])
-            raw_w = getattr(module, name_w + '_raw')
+            raw_w = getattr(module, name_w + "_raw")
 
             if len(raw_w.size()) > 2 and raw_w.size(2) > 1 and self.temporal:
                 # Drop the temporal parts of the weight; if 1x1 convolution then drop the whole kernel
-                w = torch.cat([F.dropout(raw_w[:, :, :-1], p=self.dropout, training=self.training),
-                               raw_w[:, :, -1:]], dim=2)
+                w = torch.cat(
+                    [F.dropout(raw_w[:, :, :-1], p=self.dropout, training=self.training), raw_w[:, :, -1:]], dim=2
+                )
             else:
                 w = F.dropout(raw_w, p=self.dropout, training=self.training)
 
@@ -77,10 +76,10 @@ def matrix_diag(a, dim=2):
     """
     if dim == 2:
         res = torch.zeros(a.size(0), a.size(1), a.size(1))
-        res.as_strided(a.size(), [res.stride(0), res.size(2)+1]).copy_(a)
+        res.as_strided(a.size(), [res.stride(0), res.size(2) + 1]).copy_(a)
     else:
         res = torch.zeros(a.size(0), a.size(1), a.size(2), a.size(2))
-        res.as_strided(a.size(), [res.stride(0), res.stride(1), res.size(3)+1]).copy_(a)
+        res.as_strided(a.size(), [res.stride(0), res.stride(1), res.size(3) + 1]).copy_(a)
     return res
 
 
@@ -103,7 +102,8 @@ def embedded_dropout(embed, words, dropout=0.1, scale=None):
     """
     if dropout:
         mask = embed.weight.data.new().resize_((embed.weight.size(0), 1)).bernoulli_(1 - dropout).expand_as(
-            embed.weight) / (1 - dropout)
+            embed.weight
+        ) / (1 - dropout)
         mask = Variable(mask)
         masked_embed_weight = mask * embed.weight
     else:
@@ -116,10 +116,10 @@ def embedded_dropout(embed, words, dropout=0.1, scale=None):
     if padding_idx is None:
         padding_idx = -1
 
-    X = F.embedding(words, masked_embed_weight, padding_idx, embed.max_norm, embed.norm_type,
-                                       embed.scale_grad_by_freq, embed.sparse)
+    X = F.embedding(
+        words, masked_embed_weight, padding_idx, embed.max_norm, embed.norm_type, embed.scale_grad_by_freq, embed.sparse
+    )
     return X
-
 
 
 ##############################################################################################################
@@ -128,13 +128,13 @@ def embedded_dropout(embed, words, dropout=0.1, scale=None):
 #
 ##############################################################################################################
 
-    
+
 class VariationalHidDropout2d(nn.Module):
     def __init__(self, dropout=0.0):
         super(VariationalHidDropout2d, self).__init__()
         self.dropout = dropout
         self.mask = None
-    
+
     def forward(self, x):
         if not self.training or self.dropout == 0:
             return x
@@ -143,6 +143,3 @@ class VariationalHidDropout2d(nn.Module):
             m = torch.zeros(bsz, d, H, W).bernoulli_(1 - self.dropout).to(x)
             self.mask = m.requires_grad_(False) / (1 - self.dropout)
         return self.mask * x
-
-
-

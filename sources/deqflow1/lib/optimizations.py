@@ -1,14 +1,15 @@
-from torch.nn.parameter import Parameter
-import torch.nn as nn
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from torch.nn.parameter import Parameter
 
 ##############################################################################################################
 #
 # Temporal DropConnect in a feed-forward setting
 #
 ##############################################################################################################
+
 
 class WeightDrop(torch.nn.Module):
     def __init__(self, module, weights, dropout=0, temporal=True):
@@ -33,7 +34,7 @@ class WeightDrop(torch.nn.Module):
 
     def _setup(self):
         for path in self.weights:
-            full_name_w = '.'.join(path)
+            full_name_w = ".".join(path)
 
             module = self.module
             name_w = path[-1]
@@ -41,7 +42,7 @@ class WeightDrop(torch.nn.Module):
                 module = getattr(module, path[i])
             w = getattr(module, name_w)
             del module._parameters[name_w]
-            module.register_parameter(name_w + '_raw', Parameter(w.data))
+            module.register_parameter(name_w + "_raw", Parameter(w.data))
 
     def _setweights(self):
         for path in self.weights:
@@ -49,12 +50,13 @@ class WeightDrop(torch.nn.Module):
             name_w = path[-1]
             for i in range(len(path) - 1):
                 module = getattr(module, path[i])
-            raw_w = getattr(module, name_w + '_raw')
+            raw_w = getattr(module, name_w + "_raw")
 
             if len(raw_w.size()) > 2 and raw_w.size(2) > 1 and self.temporal:
                 # Drop the temporal parts of the weight; if 1x1 convolution then drop the whole kernel
-                w = torch.cat([F.dropout(raw_w[:, :, :-1], p=self.dropout, training=self.training),
-                               raw_w[:, :, -1:]], dim=2)
+                w = torch.cat(
+                    [F.dropout(raw_w[:, :, :-1], p=self.dropout, training=self.training), raw_w[:, :, -1:]], dim=2
+                )
             else:
                 w = F.dropout(raw_w, p=self.dropout, training=self.training)
 
@@ -72,17 +74,19 @@ def matrix_diag(a, dim=2):
     """
     if dim == 2:
         res = torch.zeros(a.size(0), a.size(1), a.size(1))
-        res.as_strided(a.size(), [res.stride(0), res.size(2)+1]).copy_(a)
+        res.as_strided(a.size(), [res.stride(0), res.size(2) + 1]).copy_(a)
     else:
         res = torch.zeros(a.size(0), a.size(1), a.size(2), a.size(2))
-        res.as_strided(a.size(), [res.stride(0), res.stride(1), res.size(3)+1]).copy_(a)
+        res.as_strided(a.size(), [res.stride(0), res.stride(1), res.size(3) + 1]).copy_(a)
     return res
+
 
 ##############################################################################################################
 #
 # Embedding dropout
 #
 ##############################################################################################################
+
 
 def embedded_dropout(embed, words, dropout=0.1, scale=None):
     """
@@ -96,7 +100,8 @@ def embedded_dropout(embed, words, dropout=0.1, scale=None):
     """
     if dropout:
         mask = embed.weight.data.new().resize_((embed.weight.size(0), 1)).bernoulli_(1 - dropout).expand_as(
-            embed.weight) / (1 - dropout)
+            embed.weight
+        ) / (1 - dropout)
         mask = Variable(mask)
         masked_embed_weight = mask * embed.weight
     else:
@@ -109,10 +114,10 @@ def embedded_dropout(embed, words, dropout=0.1, scale=None):
     if padding_idx is None:
         padding_idx = -1
 
-    X = F.embedding(words, masked_embed_weight, padding_idx, embed.max_norm, embed.norm_type,
-                                       embed.scale_grad_by_freq, embed.sparse)
+    X = F.embedding(
+        words, masked_embed_weight, padding_idx, embed.max_norm, embed.norm_type, embed.scale_grad_by_freq, embed.sparse
+    )
     return X
-
 
 
 ##############################################################################################################
@@ -121,13 +126,13 @@ def embedded_dropout(embed, words, dropout=0.1, scale=None):
 #
 ##############################################################################################################
 
-    
+
 class VariationalHidDropout2d(nn.Module):
     def __init__(self, dropout=0.0):
         super(VariationalHidDropout2d, self).__init__()
         self.dropout = dropout
         self.mask = None
-    
+
     def forward(self, x):
         if not self.training or self.dropout == 0:
             return x
@@ -137,11 +142,13 @@ class VariationalHidDropout2d(nn.Module):
             self.mask = m.requires_grad_(False) / (1 - self.dropout)
         return self.mask * x
 
+
 ##############################################################################################################
 #
 # Weight normalization. Modified from the original PyTorch's implementation of weight normalization.
 #
 ##############################################################################################################
+
 
 def _norm(p, dim):
     """Computes the norm over all dimensions except dim"""
@@ -169,8 +176,8 @@ class WeightNorm(object):
         self.dim = dim
 
     def compute_weight(self, module, name):
-        g = getattr(module, name + '_g')
-        v = getattr(module, name + '_v')
+        g = getattr(module, name + "_g")
+        v = getattr(module, name + "_v")
         return v * (g / _norm(v, self.dim))
 
     @staticmethod
@@ -184,8 +191,8 @@ class WeightNorm(object):
             del module._parameters[name]
 
             # add g and v as new parameters and express w as g/||v|| * v
-            module.register_parameter(name + '_g', Parameter(_norm(weight, dim).data))
-            module.register_parameter(name + '_v', Parameter(weight.data))
+            module.register_parameter(name + "_g", Parameter(_norm(weight, dim).data))
+            module.register_parameter(name + "_v", Parameter(weight.data))
             setattr(module, name, fn.compute_weight(module, name))
 
         # recompute weight before every forward()
@@ -196,8 +203,8 @@ class WeightNorm(object):
         for name in self.names:
             weight = self.compute_weight(module, name)
             delattr(module, name)
-            del module._parameters[name + '_g']
-            del module._parameters[name + '_v']
+            del module._parameters[name + "_g"]
+            del module._parameters[name + "_v"]
             module.register_parameter(name, Parameter(weight.data))
 
     def reset(self, module):

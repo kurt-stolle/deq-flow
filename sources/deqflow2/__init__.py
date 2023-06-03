@@ -1,2 +1,4 @@
+from . import deq, utils
 from .deq_flow import *
-from . import deq 
+
+__version__ = "2.0.0"

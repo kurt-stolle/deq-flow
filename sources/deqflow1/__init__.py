@@ -1,2 +1,4 @@
+from . import lib, utils
 from .deq import *
-from . import utils, lib
+
+__version__ = "1.0.0"
