@@ -11,7 +11,7 @@ from .extractor import Encoder
 from .gma import Attention
 from .metrics import process_metrics
 from .update import UpdateBlock
-from .utils.utils import bilinear_sampler, coords_grid
+from .utils.utils import coords_grid
 
 __all__ = ["DEQFlow"]
 

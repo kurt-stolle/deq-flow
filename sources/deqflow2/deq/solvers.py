@@ -1,17 +1,7 @@
 # Modified based on the DEQ repo.
 
-import os
-import pickle
-import sys
-import time
-
 import numpy as np
 import torch
-import torch.nn.functional as functional
-from scipy.optimize import root
-from termcolor import colored
-from torch import nn
-from torch.autograd import Function
 
 
 def batch_masked_mixing(mask, mask_var, orig_var):
