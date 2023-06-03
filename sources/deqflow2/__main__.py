@@ -329,6 +329,7 @@ def visualize(args):
             elif viz_dataset == "kitti":
                 viz.kitti_visualization(model.module, split=split, output_path=args.output_path)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--eval", action="store_true", help="Enable Eval mode.")

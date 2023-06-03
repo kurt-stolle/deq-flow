@@ -21,8 +21,7 @@ requires-python = ">=3.10"
 version="2.0.0"
 
 dependencies = [
-    "numpy", "einops", "unitrack",
-    "torch >= 2.0.0",
+    "numpy", "einops", "unitrack", "torch",
 ]
 
 [tool.setuptools.packages.find]
