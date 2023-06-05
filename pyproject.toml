@@ -21,7 +21,7 @@ requires-python = ">=3.10"
 version="2.0.0"
 
 dependencies = [
-    "numpy", "einops", "unitrack", "torch", "torchvision", "opencv-python"
+    "numpy", "einops", "unitrack", "torch", "torchvision", "opencv-python", "termcolor"
 ]
 
 [tool.setuptools.packages.find]

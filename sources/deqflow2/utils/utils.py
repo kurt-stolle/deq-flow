@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 from scipy import interpolate
 
+
 class InputPadder:
     """Pads images such that dimensions are divisible by 8"""
 

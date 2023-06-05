@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from termcolor import colored
 
-from .corr import AlternateCorrBlock, CorrBlock
+from .corr import CorrBlock
 from .extractor import BasicEncoder, SmallEncoder
 from .gma import Attention
 from .lib.grad import backward_factory, make_pair
@@ -201,10 +201,7 @@ class DEQFlowBase(nn.Module):
 
         fmap1 = fmap1.float()
         fmap2 = fmap2.float()
-        if self.args.alternate_corr:
-            corr_fn = AlternateCorrBlock(fmap1, fmap2, radius=self.args.corr_radius)
-        else:
-            corr_fn = CorrBlock(fmap1, fmap2, radius=self.args.corr_radius)
+        corr_fn = CorrBlock(fmap1, fmap2, radius=self.args.corr_radius)
 
         # run the context network
         with autocast(enabled=self.args.mixed_precision):
