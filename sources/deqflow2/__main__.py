@@ -345,7 +345,7 @@ def get_deq(args: argparse.Namespace) -> deq.DEQBase:
         b_solver=args.b_solver,
         f_eps=args.f_eps,
         b_eps=args.b_eps,
-        f_eval_thres=int(args.eval_factor * args.f_thres),
+        eval_f_thres=int(args.eval_factor * args.f_thres),
         n_losses=args.n_losses,
         indexing=args.indexing,
         phantom_grad=args.phantom_grad,
