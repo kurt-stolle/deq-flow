@@ -15,7 +15,7 @@ from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from . import datasets, evaluate, viz, deq
+from . import datasets, deq, evaluate, viz
 from .deq_flow import DEQFlow
 from .metrics import compute_epe, merge_metrics
 
@@ -144,7 +144,7 @@ def write_stats(args, stats):
 
 
 def train_once(args):
-    model = nn.DataParallel(DEQFlow(args), device_ids=args.gpus)
+    model = nn.DataParallel(get_model(args), device_ids=args.gpus)
     print("Parameter Count: %.3f M" % count_parameters(model))
 
     if args.restore_name is not None:
@@ -262,7 +262,7 @@ def train_once(args):
 
 
 def val(args):
-    model = nn.DataParallel(DEQFlow(args), device_ids=args.gpus)
+    model = nn.DataParallel(get_model(args), device_ids=args.gpus)
     print("Parameter Count: %.3f M" % count_parameters(model))
 
     if args.restore_ckpt is not None:
@@ -306,7 +306,7 @@ def test(args):
 
 
 def visualize(args):
-    model = nn.DataParallel(DEQFlow(args), device_ids=args.gpus)
+    model = nn.DataParallel(get_model(args), device_ids=args.gpus)
     print("Parameter Count: %.3f M" % count_parameters(model))
 
     if args.restore_ckpt is not None:
@@ -331,33 +331,38 @@ def visualize(args):
 
 def get_deq(args: argparse.Namespace) -> deq.DEQBase:
     if args.indexing_core:
-        return deq.DEQIndexing
+        cls = deq.DEQIndexing
     else:
-        return deq.DEQSliced
+        cls = deq.DEQSliced
 
-def get_model(args: argparse.Namespace) -> DEQFlow:
-    deq_cls = deq.arg_utils.get_deq_cls(args)
-    deq = deq_cls(
+    return cls(
         f_thres=args.f_thres,
         b_thres=args.b_thres,
         f_stop_mode=args.f_stop_mode,
         b_stop_mode=args.b_stop_mode,
         f_solver=args.f_solver,
         b_solver=args.b_solver,
-        # TODO
+        n_losses=args.n_losses,
+        indexing=args.indexing,
+        phantom_grad=args.phantom_grad,
+        safe_ift=args.safe_ift,
+        tau=args.tau,
+        sup_all=args.sup_all,
     )
 
-    DEQFlow(
+
+def get_model(args: argparse.Namespace) -> DEQFlow:
+    deq = get_deq(args)
+    return DEQFlow(
         variant=args.variant,
         deq=deq,
         dropout=args.dropout,
         use_gma=args.gma,
         use_legacy=args.old_version,
-        use_wnorm=args.use_wnorm,
-        use_all_grad=args.use_all_grad,
-        use_mixed_precision=args.use_mixed_precision,
+        use_wnorm=args.wnorm,
+        use_all_grad=args.all_grad,
+        use_mixed_precision=args.mixed_precision,
     )
-
 
 
 def get_argparser() -> argparse.ArgumentParser:
@@ -465,7 +470,7 @@ def get_argparser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
-
+    parser = get_argparser()
     args = parser.parse_args()
 
     torch.manual_seed(1234)

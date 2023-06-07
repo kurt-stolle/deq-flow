@@ -1,10 +1,10 @@
+import argparse
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from typing_extensions import Self
-import argparse
 
 from . import deq
 from .corr import CorrBlock

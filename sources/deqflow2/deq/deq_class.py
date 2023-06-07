@@ -10,8 +10,8 @@ from termcolor import colored
 from .grad import backward_factory, make_pair
 from .jacobian import power_method
 
-
 __all__ = ["DEQIndexing", "DEQSliced", "DEQBase"]
+
 
 class DEQBase(nn.Module, metaclass=ABCMeta):
     def __init__(

@@ -1,5 +1,6 @@
-import pytest
 import deqflow2
+import pytest
+
 
 @pytest.fixture()
 @pytest.mark.parametrize("use_indexing", [True, False])
@@ -17,5 +18,3 @@ def mod_deqflow(request, variant, mod_deq) -> deqflow2.DEQFlow:
     mod = deqflow2.DEQFlow(variant=variant, deq=mod_deq)
 
     return mod
-
-    
