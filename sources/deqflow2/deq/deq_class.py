@@ -163,7 +163,7 @@ class DEQSliced(DEQBase):
 
         # Define gradient functions through the backward factory
         if n_losses > 1:
-            self.indexing = [int(self.f_thres // self.n_losses) for _ in range(n_losses)]
+            self.indexing = [int(self.f_thres // n_losses) for _ in range(n_losses)]
         else:
             self.indexing = np.diff([0, *indexing, self.f_thres]).tolist()
 
@@ -177,7 +177,7 @@ class DEQSliced(DEQBase):
                 grad_type="ift",
                 safe_ift=safe_ift,
                 b_solver=self.b_solver,
-                b_solver_kwargs=dict(threshold=args.b_thres, eps=args.b_eps, stop_mode=args.b_stop_mode),
+                b_solver_kwargs=dict(threshold=self.b_thres, eps=self.b_eps, stop_mode=args.b_stop_mode),
             )
 
         self.produce_grad = produce_grad
