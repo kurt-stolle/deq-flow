@@ -2,10 +2,9 @@ import os
 
 import numpy as np
 import torch
-from utils import frame_utils
-from utils.utils import InputPadder, forward_interpolate
 
 from . import datasets
+from .utils import InputPadder, forward_interpolate, frame_utils
 
 MAX_FLOW = 400
 
