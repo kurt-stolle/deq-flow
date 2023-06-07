@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11"
 ]
 requires-python = ">=3.10"
-version="2.0-ks"
+version="2.0.1"
 
 dependencies = [
     "numpy", "einops", "unitrack", "torch", "torchvision", "opencv-python", "termcolor"
