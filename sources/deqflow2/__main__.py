@@ -18,6 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 from . import datasets, deq, evaluate, viz
 from .deq_flow import DEQFlow
 from .metrics import compute_epe, merge_metrics
+from .variant import Variant
 
 # exclude extremly large displacements
 MAX_FLOW = 400
@@ -342,6 +343,9 @@ def get_deq(args: argparse.Namespace) -> deq.DEQBase:
         b_stop_mode=args.b_stop_mode,
         f_solver=args.f_solver,
         b_solver=args.b_solver,
+        f_eps=args.f_eps,
+        b_eps=args.b_eps,
+        f_eval_thres=int(args.eval_factor * args.f_thres),
         n_losses=args.n_losses,
         indexing=args.indexing,
         phantom_grad=args.phantom_grad,
@@ -349,6 +353,19 @@ def get_deq(args: argparse.Namespace) -> deq.DEQBase:
         tau=args.tau,
         sup_all=args.sup_all,
     )
+
+
+def get_variant(args: argparse.Namespace) -> Variant:
+    if args.tiny:
+        return Variant.TINY
+    elif args.large:
+        return Variant.LARGE
+    elif args.huge:
+        return Variant.HUGE
+    elif args.gigantic:
+        return Variant.GIGANTIC
+    else:
+        raise ValueError("Unknown variant")
 
 
 def get_model(args: argparse.Namespace) -> DEQFlow:
@@ -381,10 +398,11 @@ def get_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--restore_name", help="restore experiment name")
     parser.add_argument("--resume_iter", type=int, default=-1, help="resume from the given iterations")
 
-    parser.add_argument("--tiny", action="store_true", help="use a tiny model for ablation study")
-    parser.add_argument("--large", action="store_true", help="use a large model")
-    parser.add_argument("--huge", action="store_true", help="use a huge model")
-    parser.add_argument("--gigantic", action="store_true", help="use a gigantic model")
+    mutex_variant = parser.add_mutually_exclusive_group()
+    mutex_variant.add_argument("--tiny", action="store_true", help="use a tiny model for ablation study")
+    mutex_variant.add_argument("--large", action="store_true", help="use a large model")
+    mutex_variant.add_argument("--huge", action="store_true", help="use a huge model")
+    mutex_variant.add_argument("--gigantic", action="store_true", help="use a gigantic model")
     parser.add_argument("--old_version", action="store_true", help="use the old design for flow head")
 
     parser.add_argument("--restore_ckpt", help="restore checkpoint for val/test/viz")

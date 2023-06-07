@@ -43,12 +43,6 @@ class DEQBase(nn.Module, metaclass=ABCMeta):
 
         self.hook = None
 
-    @classmethod
-    def from_eval_factor(cls, eval_factor: float, *, f_thres: int, **kwargs):
-        if "eval_f_thres" in kwargs:
-            raise ValueError("`eval_f_thres` should not be specified as an argument when computed using `eval_factor`.")
-        return cls(eval_f_thres=int(eval_factor * f_thres), **kwargs)
-
     def _log_convergence(self, info, name="FORWARD", color="yellow"):
         state = "TRAIN" if self.training else "VALID"
         alt_mode = "rel" if self.f_stop_mode == "abs" else "abs"
