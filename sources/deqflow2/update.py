@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .gma import Aggregate
+from .variant import Variant
 
 
 class FlowHead(nn.Module):
@@ -64,51 +65,52 @@ class SepConvGRU(nn.Module):
 
 
 class MotionEncoder(nn.Module):
-    def __init__(self, args):
+    def __init__(self, variant: Variant, corr_levels: int, corr_radius: int):
         super(MotionEncoder, self).__init__()
 
-        if args.large:
-            c_dim_1 = 256 + 128
-            c_dim_2 = 192 + 96
+        match variant:
+            case Variant.LARGE:
+                c_dim_1 = 256 + 128
+                c_dim_2 = 192 + 96
 
-            f_dim_1 = 128 + 64
-            f_dim_2 = 64 + 32
+                f_dim_1 = 128 + 64
+                f_dim_2 = 64 + 32
 
-            cat_dim = 128 + 64
-        elif args.huge:
-            c_dim_1 = 256 + 256
-            c_dim_2 = 192 + 192
+                cat_dim = 128 + 64
+            case Variant.HUGE:
+                c_dim_1 = 256 + 256
+                c_dim_2 = 192 + 192
 
-            f_dim_1 = 128 + 128
-            f_dim_2 = 64 + 64
+                f_dim_1 = 128 + 128
+                f_dim_2 = 64 + 64
 
-            cat_dim = 128 + 128
-        elif args.gigantic:
-            c_dim_1 = 256 + 384
-            c_dim_2 = 192 + 288
+                cat_dim = 128 + 128
+            case Variant.GIGANTIC:
+                c_dim_1 = 256 + 384
+                c_dim_2 = 192 + 288
 
-            f_dim_1 = 128 + 192
-            f_dim_2 = 64 + 96
+                f_dim_1 = 128 + 192
+                f_dim_2 = 64 + 96
 
-            cat_dim = 128 + 192
-        elif args.tiny:
-            c_dim_1 = 64
-            c_dim_2 = 48
+                cat_dim = 128 + 192
+            case Variant.TINY:
+                c_dim_1 = 64
+                c_dim_2 = 48
 
-            f_dim_1 = 32
-            f_dim_2 = 16
+                f_dim_1 = 32
+                f_dim_2 = 16
 
-            cat_dim = 32
-        else:
-            c_dim_1 = 256
-            c_dim_2 = 192
+                cat_dim = 32
+            case _:
+                c_dim_1 = 256
+                c_dim_2 = 192
 
-            f_dim_1 = 128
-            f_dim_2 = 64
+                f_dim_1 = 128
+                f_dim_2 = 64
 
-            cat_dim = 128
+                cat_dim = 128
 
-        cor_planes = args.corr_levels * (2 * args.corr_radius + 1) ** 2
+        cor_planes = corr_levels * (2 * corr_radius + 1) ** 2
         self.convc1 = nn.Conv2d(cor_planes, c_dim_1, 1, padding=0)
         self.convc2 = nn.Conv2d(c_dim_1, c_dim_2, 3, padding=1)
         self.convf1 = nn.Conv2d(2, f_dim_1, 7, padding=3)
@@ -127,29 +129,34 @@ class MotionEncoder(nn.Module):
 
 
 class UpdateBlock(nn.Module):
-    def __init__(self, args, hidden_dim=128, input_dim=128):
-        super(UpdateBlock, self).__init__()
-        self.args = args
+    def __init__(
+        self, variant: Variant, *, corr_levels: int, corr_radius: int, hidden_dim: int, use_gma: bool, use_legacy: bool
+    ):
+        super().__init__()
 
-        if args.tiny:
-            cat_dim = 32
-        elif args.large:
-            cat_dim = 128 + 64
-        elif args.huge:
-            cat_dim = 128 + 128
-        elif args.gigantic:
-            cat_dim = 128 + 192
-        else:
-            cat_dim = 128
+        self.corr_levels = corr_levels
+        self.corr_radius = corr_radius
 
-        if args.old_version:
+        match variant:
+            case Variant.TINY:
+                cat_dim = 32
+            case Variant.LARGE:
+                cat_dim = 128 + 64
+            case Variant.HUGE:
+                cat_dim = 128 + 128
+            case Variant.GIGANTIC:
+                cat_dim = 128 + 192
+            case _:
+                cat_dim = 128
+
+        if use_legacy:
             flow_head_dim = min(256, 2 * cat_dim)
         else:
             flow_head_dim = 2 * cat_dim
 
-        self.encoder = MotionEncoder(args)
+        self.encoder = MotionEncoder(ant=variant, corr_levels=self.corr_levels, corr_radius=self.corr_radius)
 
-        if args.gma:
+        if use_gma:
             self.gma = Aggregate(dim=cat_dim, dim_head=cat_dim, heads=1)
 
             gru_in_dim = 2 * cat_dim + hidden_dim

@@ -3,8 +3,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from typing_extensions import Self
+import argparse
+
+from . import deq
 from .corr import CorrBlock
-from .deq import get_deq
 from .deq.layer_utils import DEQWrapper
 from .deq.norm import apply_weight_norm, reset_weight_norm
 from .extractor import Encoder
@@ -12,6 +15,7 @@ from .gma import Attention
 from .metrics import process_metrics
 from .update import UpdateBlock
 from .utils.utils import coords_grid
+from .variant import Variant
 
 __all__ = ["DEQFlow"]
 
@@ -19,54 +23,69 @@ autocast = torch.cuda.amp.autocast
 
 
 class DEQFlow(nn.Module):
-    def __init__(self, args):
+    def __init__(
+        self,
+        *,
+        variant: Variant,
+        deq: deq.DEQBase,
+        dropout: float = 0.0,
+        use_gma: bool = False,
+        use_legacy: bool = False,
+        use_wnorm: bool = True,
+        use_all_grad: bool = False,
+        use_mixed_precision: bool = True,
+    ):
         super(DEQFlow, self).__init__()
-        self.args = args
 
-        odim = 256
-        args.corr_levels = 4
-        args.corr_radius = 4
+        self.use_mixed_precision = use_mixed_precision
+        self.use_all_grad = use_all_grad
+        self.use_wnorm = use_wnorm
 
-        if args.tiny:
-            odim = 64
-            self.hidden_dim = hdim = 32
-            self.context_dim = cdim = 32
-        elif args.large:
-            self.hidden_dim = hdim = 192
-            self.context_dim = cdim = 192
-        elif args.huge:
-            self.hidden_dim = hdim = 256
-            self.context_dim = cdim = 256
-        elif args.gigantic:
-            self.hidden_dim = hdim = 384
-            self.context_dim = cdim = 384
-        else:
-            self.hidden_dim = hdim = 128
-            self.context_dim = cdim = 128
-
-        if "dropout" not in self.args:
-            self.args.dropout = 0
+        match variant:
+            case Variant.TINY:
+                self.output_dim = odim = 64
+                self.hidden_dim = hdim = 32
+                self.context_dim = cdim = 32
+            case Variant.MEDIUM:
+                self.output_dim = odim = 256
+                self.hidden_dim = hdim = 128
+                self.context_dim = cdim = 128
+            case Variant.LARGE:
+                self.output_dim = odim = 256
+                self.hidden_dim = hdim = 192
+                self.context_dim = cdim = 192
+            case Variant.HUGE:
+                self.output_dim = odim = 256
+                self.hidden_dim = hdim = 256
+                self.context_dim = cdim = 256
+            case Variant.GIGANTIC:
+                self.output_dim = odim = 256
+                self.hidden_dim = hdim = 384
+                self.context_dim = cdim = 384
+            case _:
+                raise ValueError(f"Unknown variant: {variant}")
 
         # feature network, context network, and update block
-        self.fnet = Encoder(output_dim=odim, norm_fn="instance", dropout=args.dropout)
-        self.cnet = Encoder(output_dim=cdim, norm_fn="batch", dropout=args.dropout)
-        self.update_block = UpdateBlock(self.args, hidden_dim=hdim)
+        self.fnet = Encoder(output_dim=odim, norm_fn="instance", dropout=dropout)
+        self.cnet = Encoder(output_dim=cdim, norm_fn="batch", dropout=dropout)
+        self.update_block = UpdateBlock(
+            variant, corr_levels=4, corr_radius=4, use_gma=use_gma, use_legacy=use_legacy, hidden_dim=hdim
+        )
 
         self.mask = nn.Sequential(
             nn.Conv2d(hdim, 256, 3, padding=1), nn.ReLU(inplace=True), nn.Conv2d(256, 64 * 9, 1, padding=0)
         )
 
-        if args.gma:
+        if use_gma:
             self.attn = Attention(dim=cdim, heads=1, max_pos_size=160, dim_head=cdim)
         else:
             self.attn = None
 
         # Added the following for DEQ
-        if args.wnorm:
+        if self.use_wnorm:
             apply_weight_norm(self.update_block)
 
-        DEQ = get_deq(args)
-        self.deq = DEQ(args)
+        self.deq = deq
 
     def freeze_bn(self):
         for m in self.modules():
@@ -127,15 +146,15 @@ class DEQFlow(nn.Module):
         cdim = self.context_dim
 
         # run the feature network
-        with autocast(enabled=self.args.mixed_precision):
+        with autocast(enabled=self.use_mixed_precision):
             fmap1, fmap2 = self.fnet([image1, image2])
 
         fmap1 = fmap1.float()
         fmap2 = fmap2.float()
-        corr_fn = CorrBlock(fmap1, fmap2, radius=self.args.corr_radius)
+        corr_fn = CorrBlock(fmap1, fmap2, radius=self.update_block.corr_radius)
 
         # run the context network
-        with autocast(enabled=self.args.mixed_precision):
+        with autocast(enabled=self.use_mixed_precision):
             # cnet = self.cnet(image1)
             # net, inp = torch.split(cnet, [hdim, cdim], dim=1)
             # net = torch.tanh(net)
@@ -158,13 +177,13 @@ class DEQFlow(nn.Module):
         if flow_init is not None:
             coords1 = coords1 + flow_init
 
-        if self.args.wnorm:
+        if self.use_wnorm:
             reset_weight_norm(self.update_block)  # Reset weights for WN
 
         def func(h, c):
-            if not self.args.all_grad:
+            if not self.use_all_grad:
                 c = c.detach()
-            with autocast(enabled=self.args.mixed_precision):
+            with autocast(enabled=self.use_mixed_precision):
                 new_h, delta_flow = self.update_block(
                     h, inp, corr_fn(c), c - coords0, attn
                 )  # corr_fn(coords1) produces the index correlation volumes

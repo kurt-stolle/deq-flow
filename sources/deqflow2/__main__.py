@@ -15,8 +15,7 @@ from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from . import datasets, evaluate, viz
-from .deq.arg_utils import add_deq_args
+from . import datasets, evaluate, viz, deq
 from .deq_flow import DEQFlow
 from .metrics import compute_epe, merge_metrics
 
@@ -330,7 +329,38 @@ def visualize(args):
                 viz.kitti_visualization(model.module, split=split, output_path=args.output_path)
 
 
-if __name__ == "__main__":
+def get_deq(args: argparse.Namespace) -> deq.DEQBase:
+    if args.indexing_core:
+        return deq.DEQIndexing
+    else:
+        return deq.DEQSliced
+
+def get_model(args: argparse.Namespace) -> DEQFlow:
+    deq_cls = deq.arg_utils.get_deq_cls(args)
+    deq = deq_cls(
+        f_thres=args.f_thres,
+        b_thres=args.b_thres,
+        f_stop_mode=args.f_stop_mode,
+        b_stop_mode=args.b_stop_mode,
+        f_solver=args.f_solver,
+        b_solver=args.b_solver,
+        # TODO
+    )
+
+    DEQFlow(
+        variant=args.variant,
+        deq=deq,
+        dropout=args.dropout,
+        use_gma=args.gma,
+        use_legacy=args.old_version,
+        use_wnorm=args.use_wnorm,
+        use_all_grad=args.use_all_grad,
+        use_mixed_precision=args.use_mixed_precision,
+    )
+
+
+
+def get_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--eval", action="store_true", help="Enable Eval mode.")
     parser.add_argument("--test", action="store_true", help="Enable Test mode.")
@@ -385,8 +415,57 @@ if __name__ == "__main__":
     parser.add_argument("--active_bn", action="store_true")
     parser.add_argument("--all_grad", action="store_true", help="Remove the gradient mask within DEQ func.")
 
-    # Add args for utilizing DEQ
-    add_deq_args(parser)
+    # Refactored from original implementation @ deq.arg_utils
+    parser.add_argument("--wnorm", action="store_true", help="use weight normalization")
+    parser.add_argument(
+        "--f_solver",
+        default="anderson",
+        type=str,
+        choices=["anderson", "broyden", "naive_solver"],
+        help="forward solver to use (only anderson and broyden supported now)",
+    )
+    parser.add_argument(
+        "--b_solver",
+        default="broyden",
+        type=str,
+        choices=["anderson", "broyden", "naive_solver"],
+        help="backward solver to use",
+    )
+    parser.add_argument("--f_thres", type=int, default=40, help="forward pass solver threshold")
+    parser.add_argument("--b_thres", type=int, default=40, help="backward pass solver threshold")
+    parser.add_argument("--f_eps", type=float, default=1e-3, help="forward pass solver stopping criterion")
+    parser.add_argument("--b_eps", type=float, default=1e-3, help="backward pass solver stopping criterion")
+    parser.add_argument("--f_stop_mode", type=str, default="abs", help="forward pass fixed-point convergence stop mode")
+    parser.add_argument(
+        "--b_stop_mode", type=str, default="abs", help="backward pass fixed-point convergence stop mode"
+    )
+    parser.add_argument(
+        "--eval_factor", type=float, default=1.5, help="factor to scale up the f_thres at test for better convergence."
+    )
+    parser.add_argument("--eval_f_thres", type=int, default=0, help="directly set the f_thres at test.")
+
+    parser.add_argument("--indexing_core", action="store_true", help="use the indexing core implementation.")
+    parser.add_argument("--ift", action="store_true", help="use implicit differentiation.")
+    parser.add_argument(
+        "--safe_ift",
+        action="store_true",
+        help="use a safer function for IFT to avoid potential segment fault in older pytorch versions.",
+    )
+    parser.add_argument(
+        "--n_losses", type=int, default=1, help="number of loss terms (uniform spaced, 1 + fixed point correction)."
+    )
+    parser.add_argument("--indexing", type=int, nargs="+", default=[], help="indexing for fixed point correction.")
+    parser.add_argument("--phantom_grad", type=int, nargs="+", default=[1], help="steps of Phantom Grad")
+    parser.add_argument("--tau", type=float, default=1.0, help="damping factor for unrolled Phantom Grad")
+    parser.add_argument("--sup_all", action="store_true", help="supervise all the trajectories by Phantom Grad.")
+
+    parser.add_argument("--sradius_mode", action="store_true", help="monitor the spectral radius during validation")
+
+    return parser
+
+
+if __name__ == "__main__":
+
     args = parser.parse_args()
 
     torch.manual_seed(1234)

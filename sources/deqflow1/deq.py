@@ -17,19 +17,7 @@ from .utils import bilinear_sampler, coords_grid, upflow8
 
 __all__ = ["DEQFlowIndexing", "DEQFlowSliced", "get_model"]
 
-try:
-    autocast = torch.cuda.amp.autocast
-except:
-    # dummy autocast for PyTorch < 1.6
-    class autocast:
-        def __init__(self, enabled):
-            pass
-
-        def __enter__(self):
-            pass
-
-        def __exit__(self, *args):
-            pass
+autocast = torch.cuda.amp.autocast
 
 
 class DEQFlowBase(nn.Module):
@@ -61,9 +49,6 @@ class DEQFlowBase(nn.Module):
 
         if "dropout" not in self.args:
             self.args.dropout = 0
-
-        if "alternate_corr" not in self.args:
-            self.args.alternate_corr = False
 
         # feature network, context network, and update block
         if args.small:

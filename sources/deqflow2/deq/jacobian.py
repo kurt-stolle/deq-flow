@@ -39,6 +39,7 @@ def power_method(f0, z0, n_iters=200):
     """
     evector = torch.randn_like(z0)
     bsz = evector.shape[0]
+    evalue = None
     for i in range(n_iters):
         vTJ = torch.autograd.grad(f0, z0, evector, retain_graph=(i < n_iters - 1), create_graph=False)[0]
         evalue = (vTJ * evector).reshape(bsz, -1).sum(1, keepdim=True) / (evector * evector).reshape(bsz, -1).sum(

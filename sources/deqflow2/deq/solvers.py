@@ -1,5 +1,3 @@
-# Modified based on the DEQ repo.
-
 import numpy as np
 import torch
 

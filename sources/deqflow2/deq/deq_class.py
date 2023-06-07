@@ -1,3 +1,6 @@
+from abc import ABCMeta, abstractmethod
+from typing import Iterable, Optional, overload
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,30 +9,45 @@ from termcolor import colored
 
 from .grad import backward_factory, make_pair
 from .jacobian import power_method
-from .norm import reset_weight_norm
-from .solvers import get_solver
 
 
-class DEQBase(nn.Module):
-    def __init__(self, args):
-        super(DEQBase, self).__init__()
+__all__ = ["DEQIndexing", "DEQSliced", "DEQBase"]
 
-        self.args = args
-        self.f_solver = get_solver(args.f_solver)
-        self.b_solver = get_solver(args.b_solver)
+class DEQBase(nn.Module, metaclass=ABCMeta):
+    def __init__(
+        self,
+        *,
+        f_solver: nn.Module,
+        f_thres: int,
+        f_eps: float,
+        f_stop_mode: str,
+        b_solver: nn.Module,
+        b_thres: int,
+        b_eps: float,
+        b_stop_mode: str,
+        eval_f_thres: int,
+    ):
+        super().__init__()
 
-        self.f_thres = args.f_thres
-        self.b_thres = args.b_thres
+        self.f_solver = f_solver
+        self.f_thres = f_thres
+        self.f_eps = f_eps
+        self.f_stop_mode = f_stop_mode
 
-        self.f_eps = args.f_eps
-        self.b_eps = args.b_eps
+        self.b_solver = b_solver
+        self.b_thres = b_thres
+        self.b_eps = b_eps
+        self.b_stop_mode = b_stop_mode
 
-        self.f_stop_mode = args.f_stop_mode
-        self.b_stop_mode = args.b_stop_mode
-
-        self.eval_f_thres = args.eval_f_thres if args.eval_f_thres > 0 else int(self.f_thres * args.eval_factor)
+        self.eval_f_thres = eval_f_thres
 
         self.hook = None
+
+    @classmethod
+    def from_eval_factor(cls, eval_factor: float, *, f_thres: int, **kwargs):
+        if "eval_f_thres" in kwargs:
+            raise ValueError("`eval_f_thres` should not be specified as an argument when computed using `eval_factor`.")
+        return cls(eval_f_thres=int(eval_factor * f_thres), **kwargs)
 
     def _log_convergence(self, info, name="FORWARD", color="yellow"):
         state = "TRAIN" if self.training else "VALID"
@@ -48,36 +66,48 @@ class DEQBase(nn.Module):
 
         return sradius
 
+    @abstractmethod
     def _solve_fixed_point(self, deq_func, z_init, log=False, f_thres=None, **kwargs):
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     def forward(self, deq_func, z_init, log=False, sradius_mode=False, writer=None, **kwargs):
-        raise NotImplementedError
+        ...
 
 
 class DEQIndexing(DEQBase):
-    def __init__(self, args):
-        super(DEQIndexing, self).__init__(args)
+    def __init__(
+        self,
+        *,
+        n_losses: int,
+        indexing: Iterable[float],
+        phantom_grad: int = 1,
+        safe_ift: Optional[bool],
+        tau: float,
+        sup_all: float,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
 
         # Define gradient functions through the backward factory
-        if args.n_losses > 1:
-            n_losses = min(args.f_thres, args.n_losses)
-            delta = int(args.f_thres // n_losses)
+        if n_losses > 1:
+            n_losses = min(self.f_thres, n_losses)
+            delta = int(self.f_thres // n_losses)
             self.indexing = [(k + 1) * delta for k in range(n_losses)]
         else:
-            self.indexing = [*args.indexing, args.f_thres]
+            self.indexing = [*indexing, self.f_thres]
 
         # By default, we use the same phantom grad for all corrections.
         # You can also set different grad steps a, b, and c for different terms by ``args.phantom_grad a b c ...''.
-        indexing_pg = make_pair(self.indexing, args.phantom_grad)
-        produce_grad = [backward_factory(grad_type=pg, tau=args.tau, sup_all=args.sup_all) for pg in indexing_pg]
-        if args.ift:
+        indexing_pg = make_pair(self.indexing, phantom_grad)
+        produce_grad = [backward_factory(grad_type=pg, tau=tau, sup_all=sup_all) for pg in indexing_pg]
+        if safe_ift is not None:
             # Enabling args.ift will replace the last gradient function by IFT.
             produce_grad[-1] = backward_factory(
                 grad_type="ift",
-                safe_ift=args.safe_ift,
+                safe_ift=safe_ift,
                 b_solver=self.b_solver,
-                b_solver_kwargs=dict(threshold=args.b_thres, eps=args.b_eps, stop_mode=args.b_stop_mode),
+                b_solver_kwargs=dict(threshold=self.b_thres, eps=self.b_eps, stop_mode=self.b_stop_mode),
             )
 
         self.produce_grad = produce_grad
@@ -124,24 +154,34 @@ class DEQIndexing(DEQBase):
 
 
 class DEQSliced(DEQBase):
-    def __init__(self, args):
-        super(DEQSliced, self).__init__(args)
+    def __init__(
+        self,
+        *,
+        indexing: Iterable[int],
+        n_losses: int,
+        sup_all: bool,
+        safe_ift: Optional[bool],
+        tau: float = 1,
+        phantom_grad: int = 1,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
 
         # Define gradient functions through the backward factory
-        if args.n_losses > 1:
-            self.indexing = [int(args.f_thres // args.n_losses) for _ in range(args.n_losses)]
+        if n_losses > 1:
+            self.indexing = [int(self.f_thres // self.n_losses) for _ in range(n_losses)]
         else:
-            self.indexing = np.diff([0, *args.indexing, args.f_thres]).tolist()
+            self.indexing = np.diff([0, *indexing, self.f_thres]).tolist()
 
         # By default, we use the same phantom grad for all corrections.
         # You can also set different grad steps a, b, and c for different terms by ``args.phantom_grad a b c ...''.
-        indexing_pg = make_pair(self.indexing, args.phantom_grad)
-        produce_grad = [backward_factory(grad_type=pg, tau=args.tau, sup_all=args.sup_all) for pg in indexing_pg]
-        if args.ift:
+        indexing_pg = make_pair(self.indexing, phantom_grad)
+        produce_grad = [backward_factory(grad_type=pg, tau=tau, sup_all=sup_all) for pg in indexing_pg]
+        if safe_ift is not None:
             # Enabling args.ift will replace the last gradient function by IFT.
             produce_grad[-1] = backward_factory(
                 grad_type="ift",
-                safe_ift=args.safe_ift,
+                safe_ift=safe_ift,
                 b_solver=self.b_solver,
                 b_solver_kwargs=dict(threshold=args.b_thres, eps=args.b_eps, stop_mode=args.b_stop_mode),
             )
@@ -182,10 +222,3 @@ class DEQSliced(DEQBase):
             z_out = [deq_func.vec2list(z_star)]
 
         return z_out, info
-
-
-def get_deq(args):
-    if args.indexing_core:
-        return DEQIndexing
-    else:
-        return DEQSliced
