@@ -1,9 +1,13 @@
+from typing import Optional
+
 import numpy as np
 import torch
 
 
 class DEQWrapper:
-    def __init__(self, func, z_init=list()):
+    def __init__(self, func, z_init: Optional[list] = None):
+        if z_init is None:
+            z_init = list()
         z_shape = []
         z_indexing = [0]
         for each in z_init:

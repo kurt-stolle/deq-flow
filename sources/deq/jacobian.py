@@ -1,10 +1,8 @@
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 
-def jac_loss_estimate(f0, z0, vecs=2, create_graph=True):
+def jac_loss_estimate(f0: torch.Tensor, z0: torch.Tensor, vecs=2, create_graph=True):
     """Estimating tr(J^TJ)=tr(JJ^T) via Hutchinson estimator
 
     Args:
@@ -26,7 +24,7 @@ def jac_loss_estimate(f0, z0, vecs=2, create_graph=True):
     return result / vecs / np.prod(z0.shape)
 
 
-def power_method(f0, z0, n_iters=200):
+def power_method(f0: torch.Tensor, z0: torch.Tensor, n_iters=200):
     """Estimating the spectral radius of J using power method
 
     Args:

@@ -154,7 +154,7 @@ class UpdateBlock(nn.Module):
         else:
             flow_head_dim = 2 * cat_dim
 
-        self.encoder = MotionEncoder(ant=variant, corr_levels=self.corr_levels, corr_radius=self.corr_radius)
+        self.encoder = MotionEncoder(variant=variant, corr_levels=self.corr_levels, corr_radius=self.corr_radius)
 
         if use_gma:
             self.gma = Aggregate(dim=cat_dim, dim_head=cat_dim, heads=1)

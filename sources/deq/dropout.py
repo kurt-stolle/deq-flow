@@ -1,16 +1,8 @@
-import types
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.nn.parameter import Parameter
-
-##############################################################################################################
-#
-# Temporal DropConnect in a feed-forward setting
-#
-##############################################################################################################
 
 
 class WeightDrop(torch.nn.Module):

@@ -5,17 +5,15 @@ import os
 import time
 from functools import partial
 
-import matplotlib.pyplot as plt
+import deq
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.cuda.amp import GradScaler
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from . import datasets, deq, evaluate, viz
+from . import datasets, evaluate, viz
 from .deq_flow import DEQFlow
 from .metrics import compute_epe, merge_metrics
 from .variant import Variant
@@ -145,7 +143,7 @@ def write_stats(args, stats):
 
 
 def train_once(args):
-    model = nn.DataParallel(get_model(args), device_ids=args.gpus)
+    model = nn.DataParallel(get_model(args, use_restore=False), device_ids=args.gpus)
     print("Parameter Count: %.3f M" % count_parameters(model))
 
     if args.restore_name is not None:
@@ -171,7 +169,6 @@ def train_once(args):
     scaler = GradScaler(enabled=args.mixed_precision)
     logger = Logger(scheduler)
 
-    add_noise = True
     best_chairs = {"epe": 1e8}
     best_sintel = {"clean-epe": 1e8, "final-epe": 1e8}
     best_kitti = {"epe": 1e8, "f1": 1e8}
@@ -265,11 +262,6 @@ def train_once(args):
 def val(args):
     model = nn.DataParallel(get_model(args), device_ids=args.gpus)
     print("Parameter Count: %.3f M" % count_parameters(model))
-
-    if args.restore_ckpt is not None:
-        model.load_state_dict(torch.load(args.restore_ckpt), strict=False)
-        print(f"Load from {args.restore_ckpt}")
-
     model.cuda()
     model.eval()
 
@@ -287,10 +279,6 @@ def val(args):
 def test(args):
     model = nn.DataParallel(DEQFlow(args), device_ids=args.gpus)
     print("Parameter Count: %.3f M" % count_parameters(model))
-
-    if args.restore_ckpt is not None:
-        model.load_state_dict(torch.load(args.restore_ckpt), strict=False)
-
     model.cuda()
     model.eval()
 
@@ -336,20 +324,16 @@ def get_deq(args: argparse.Namespace) -> deq.DEQBase:
     else:
         cls = deq.DEQSliced
 
+    solver = deq.solvers.get(args.f_solver)
+    solver = partial(solver, stop_mode=deq.solvers.StopMode(args.f_stop_mode), eps=args.f_eps)
+
     return cls(
-        f_thres=args.f_thres,
-        b_thres=args.b_thres,
-        f_stop_mode=args.f_stop_mode,
-        b_stop_mode=args.b_stop_mode,
-        f_solver=args.f_solver,
-        b_solver=args.b_solver,
-        f_eps=args.f_eps,
-        b_eps=args.b_eps,
-        eval_f_thres=int(args.eval_factor * args.f_thres) if args.eval_factor > 0 else args.eval_f_thres,
+        solver=solver,
+        threshold=args.f_thres,
+        threshold_eval=int(args.eval_factor * args.f_thres) if args.eval_factor > 0 else args.eval_f_thres,
         n_losses=args.n_losses,
         indexing=args.indexing,
         phantom_grad=args.phantom_grad,
-        safe_ift=args.safe_ift,
         tau=args.tau,
         sup_all=args.sup_all,
     )
@@ -368,18 +352,28 @@ def get_variant(args: argparse.Namespace) -> Variant:
         raise ValueError("Unknown variant")
 
 
-def get_model(args: argparse.Namespace) -> DEQFlow:
-    deq = get_deq(args)
-    return DEQFlow(
-        variant=args.variant,
-        deq=deq,
+def get_model(args: argparse.Namespace, use_restore=True) -> DEQFlow:
+    model = DEQFlow(
+        variant=get_variant(args),
+        deq=get_deq(args),
         dropout=args.dropout,
         use_gma=args.gma,
-        use_legacy=args.old_version,
+        use_legacy=args.legacy,
         use_wnorm=args.wnorm,
         use_all_grad=args.all_grad,
         use_mixed_precision=args.mixed_precision,
     )
+
+    if args.restore_ckpt is not None and use_restore:
+        ckpt = torch.load(args.restore_ckpt, map_location="cpu")
+        try:
+            model.load_state_dict(ckpt, strict=True)
+        except RuntimeError:
+            model.load_state_dict({(k[7:]): v for k, v in ckpt.items() if k.startswith("module.")}, strict=True)
+
+        print(f"Load from {args.restore_ckpt}")
+
+    return model
 
 
 def get_argparser() -> argparse.ArgumentParser:
@@ -403,7 +397,7 @@ def get_argparser() -> argparse.ArgumentParser:
     mutex_variant.add_argument("--large", action="store_true", help="use a large model")
     mutex_variant.add_argument("--huge", action="store_true", help="use a huge model")
     mutex_variant.add_argument("--gigantic", action="store_true", help="use a gigantic model")
-    parser.add_argument("--old_version", action="store_true", help="use the old design for flow head")
+    parser.add_argument("--legacy", action="store_true", help="use the legacy V1 version of DEQFlow")
 
     parser.add_argument("--restore_ckpt", help="restore checkpoint for val/test/viz")
     parser.add_argument("--validation", type=str, nargs="+")
@@ -448,32 +442,21 @@ def get_argparser() -> argparse.ArgumentParser:
         help="forward solver to use (only anderson and broyden supported now)",
     )
     parser.add_argument(
-        "--b_solver",
+        "--ift_solver",
         default="broyden",
         type=str,
         choices=["anderson", "broyden", "naive_solver"],
         help="backward solver to use",
     )
     parser.add_argument("--f_thres", type=int, default=40, help="forward pass solver threshold")
-    parser.add_argument("--b_thres", type=int, default=40, help="backward pass solver threshold")
     parser.add_argument("--f_eps", type=float, default=1e-3, help="forward pass solver stopping criterion")
-    parser.add_argument("--b_eps", type=float, default=1e-3, help="backward pass solver stopping criterion")
     parser.add_argument("--f_stop_mode", type=str, default="abs", help="forward pass fixed-point convergence stop mode")
-    parser.add_argument(
-        "--b_stop_mode", type=str, default="abs", help="backward pass fixed-point convergence stop mode"
-    )
     parser.add_argument(
         "--eval_factor", type=float, default=1.5, help="factor to scale up the f_thres at test for better convergence."
     )
     parser.add_argument("--eval_f_thres", type=int, default=0, help="directly set the f_thres at test.")
 
     parser.add_argument("--indexing_core", action="store_true", help="use the indexing core implementation.")
-    parser.add_argument("--ift", action="store_true", help="use implicit differentiation.")
-    parser.add_argument(
-        "--safe_ift",
-        action="store_true",
-        help="use a safer function for IFT to avoid potential segment fault in older pytorch versions.",
-    )
     parser.add_argument(
         "--n_losses", type=int, default=1, help="number of loss terms (uniform spaced, 1 + fixed point correction)."
     )

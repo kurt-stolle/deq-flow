@@ -1,15 +1,14 @@
-import argparse
+from __future__ import annotations
 
+import deq
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing_extensions import Self
+from deq.layer_utils import DEQWrapper
+from deq.norm import apply_weight_norm, reset_weight_norm
 
-from . import deq
 from .corr import CorrBlock
-from .deq.layer_utils import DEQWrapper
-from .deq.norm import apply_weight_norm, reset_weight_norm
 from .extractor import Encoder
 from .gma import Attention
 from .metrics import process_metrics
@@ -25,9 +24,9 @@ autocast = torch.cuda.amp.autocast
 class DEQFlow(nn.Module):
     def __init__(
         self,
-        *,
-        variant: Variant,
+        variant: Variant | str,
         deq: deq.DEQBase,
+        *,
         dropout: float = 0.0,
         use_gma: bool = False,
         use_legacy: bool = False,
@@ -36,6 +35,9 @@ class DEQFlow(nn.Module):
         use_mixed_precision: bool = True,
     ):
         super(DEQFlow, self).__init__()
+
+        if isinstance(variant, str):
+            variant = Variant(variant)
 
         self.use_mixed_precision = use_mixed_precision
         self.use_all_grad = use_all_grad
