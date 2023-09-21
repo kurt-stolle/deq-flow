@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 
 
@@ -16,4 +18,3 @@ def init_solver_stats(x0, init_loss=1e8):
     }
 
     return trace_dict, lowest_dict, lowest_step_dict
-

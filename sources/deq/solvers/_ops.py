@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import torch
 
 
 def batch_masked_mixing(mask, mask_var, orig_var):
     """
     First align the axes of mask to mask_var.
+
     Then mix mask_var and orig_var through the aligned mask.
 
     Args:
@@ -79,7 +82,7 @@ def line_search(update, x0, g0, g, nstep=0, on=True):
     tmp_s = [0]
     tmp_g0 = [g0]
     tmp_phi = [torch.norm(g0) ** 2]
-    s_norm = torch.norm(x0) / torch.norm(update)
+    torch.norm(x0) / torch.norm(update)
 
     def phi(s, store=True):
         if s == tmp_s[0]:

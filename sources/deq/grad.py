@@ -1,7 +1,6 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from functools import partial
-from typing import Any, Callable, Literal, Optional, TypeAlias
 
 import numpy as np
 import torch
@@ -65,6 +64,7 @@ class BackwardIFT(Backward):
 class BackwardPhantom(Backward):
     def __new__(cls, n: int = 1, sup_all: bool = False, tau: float = 1.0):
         if sup_all:
+
             def sup_all_phantom_grad(func, z_pred):
                 z_out = []
                 for _ in range(n):
